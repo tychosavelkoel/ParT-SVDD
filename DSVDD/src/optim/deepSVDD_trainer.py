@@ -9,7 +9,7 @@ import time
 import torch
 import torch.optim as optim
 import numpy as np
-
+import tqdm
 
 class DeepSVDDTrainer(BaseTrainer):
 
@@ -36,14 +36,11 @@ class DeepSVDDTrainer(BaseTrainer):
         self.test_time = None
         self.test_scores = None
 
-    def train(self, dataset: BaseADDataset, net: BaseNet):
+    def train(self,  net: BaseNet, train_loader = None, data_config = None, steps_per_epoch = 100):
         logger = logging.getLogger()
 
         # Set device for network
         net = net.to(self.device)
-
-        # Get train data loader
-        train_loader, _ = dataset.loaders(batch_size=self.batch_size, num_workers=self.n_jobs_dataloader)
 
         # Set optimizer (Adam optimizer for now)
         optimizer = optim.Adam(net.parameters(), lr=self.lr, weight_decay=self.weight_decay,
@@ -55,7 +52,7 @@ class DeepSVDDTrainer(BaseTrainer):
         # Initialize hypersphere center c (if c not loaded)
         if self.c is None:
             logger.info('Initializing center c...')
-            self.c = self.init_center_c(train_loader, net)
+            self.c = self.init_center_c(train_loader, net,  data_config = data_config)
             logger.info('Center c initialized.')
 
         # Training
@@ -71,30 +68,38 @@ class DeepSVDDTrainer(BaseTrainer):
             loss_epoch = 0.0
             n_batches = 0
             epoch_start_time = time.time()
-            for data in train_loader:
-                inputs, _, _ = data
-                inputs = inputs.to(self.device)
+            with tqdm.tqdm(train_loader) as tq:
+                for X, y, _ in tq:
+                    inputs = [X[k].to(self.device) for k in data_config.input_names]
 
-                # Zero the network parameter gradients
-                optimizer.zero_grad()
+                    # Zero the network parameter gradients
+                    optimizer.zero_grad()
 
-                # Update network parameters via backpropagation: forward + backward + optimize
-                outputs = net(inputs)
-                dist = torch.sum((outputs - self.c) ** 2, dim=1)
-                if self.objective == 'soft-boundary':
-                    scores = dist - self.R ** 2
-                    loss = self.R ** 2 + (1 / self.nu) * torch.mean(torch.max(torch.zeros_like(scores), scores))
-                else:
-                    loss = torch.mean(dist)
-                loss.backward()
-                optimizer.step()
+                    # Update network parameters via backpropagation: forward + backward + optimize
+                    outputs = net(*inputs).flatten(start_dim = 1)
 
-                # Update hypersphere radius R on mini-batch distances
-                if (self.objective == 'soft-boundary') and (epoch >= self.warm_up_n_epochs):
-                    self.R.data = torch.tensor(get_radius(dist, self.nu), device=self.device)
+                    dist = torch.sum((outputs - self.c) ** 2, dim=1)
 
-                loss_epoch += loss.item()
-                n_batches += 1
+
+                    if self.objective == 'soft-boundary':
+                        scores = dist - self.R ** 2
+                        loss = self.R ** 2 + (1 / self.nu) * torch.mean(torch.max(torch.zeros_like(scores), scores))
+                    else:
+                        loss = torch.mean(dist)
+
+                    loss.backward()
+                    optimizer.step()
+
+
+                    # Update hypersphere radius R on mini-batch distances
+                    if (self.objective == 'soft-boundary') and (epoch >= self.warm_up_n_epochs):
+                        self.R.data = torch.tensor(get_radius(dist, self.nu), device=self.device)
+
+                    loss_epoch += loss.item()
+                    n_batches += 1
+
+                    if steps_per_epoch is not None and n_batches >= steps_per_epoch:
+                        break
 
             # log epoch statistics
             epoch_train_time = time.time() - epoch_start_time
@@ -108,66 +113,73 @@ class DeepSVDDTrainer(BaseTrainer):
 
         return net
 
-    def test(self, dataset: BaseADDataset, net: BaseNet):
+    def test(self, net: BaseNet, test_loader = None, data_config = None, steps_per_epoch = 10):
         logger = logging.getLogger()
 
         # Set device for network
         net = net.to(self.device)
 
-        # Get test data loader
-        _, test_loader = dataset.loaders(batch_size=self.batch_size, num_workers=self.n_jobs_dataloader)
-
         # Testing
         logger.info('Starting testing...')
         start_time = time.time()
-        idx_label_score = []
+        score = []
         net.eval()
+        n_batches =0
         with torch.no_grad():
-            for data in test_loader:
-                inputs, labels, idx = data
-                inputs = inputs.to(self.device)
-                outputs = net(inputs)
-                dist = torch.sum((outputs - self.c) ** 2, dim=1)
-                if self.objective == 'soft-boundary':
-                    scores = dist - self.R ** 2
-                else:
-                    scores = dist
+            with tqdm.tqdm(test_loader) as tq:
+                for X, y, _ in tq:
+                    inputs = [X[k].to(self.device) for k in data_config.input_names]
 
-                # Save triples of (idx, label, score) in a list
-                idx_label_score += list(zip(idx.cpu().data.numpy().tolist(),
-                                            labels.cpu().data.numpy().tolist(),
-                                            scores.cpu().data.numpy().tolist()))
+                    outputs = net(*inputs).flatten(start_dim = 1)
+                    dist = torch.sum((outputs - self.c) ** 2, dim=1)
 
+                    if self.objective == 'soft-boundary':
+                        scores = dist - self.R ** 2
+                    else:
+                        scores = dist
+
+                    # Save triples of (idx, label, score) in a list --> save score in a list
+                    score.append(scores.cpu().data.numpy().tolist())
+
+                    n_batches+=1
+                    if steps_per_epoch is not None and n_batches >= steps_per_epoch:
+                        break
+
+        score = np.concatenate(score)
+        
+        
         self.test_time = time.time() - start_time
         logger.info('Testing time: %.3f' % self.test_time)
 
-        self.test_scores = idx_label_score
+        self.test_scores = list(zip(score))
 
         # Compute AUC
-        _, labels, scores = zip(*idx_label_score)
-        labels = np.array(labels)
-        scores = np.array(scores)
+        #_, labels, scores = zip(*idx_label_score)
+        #labels = np.array(labels)
+        #scores = np.array(scores)
 
-        self.test_auc = roc_auc_score(labels, scores)
-        logger.info('Test set AUC: {:.2f}%'.format(100. * self.test_auc))
+        #self.test_auc = roc_auc_score(labels, scores)
+        #logger.info('Test set AUC: {:.2f}%'.format(100. * self.test_auc))
 
         logger.info('Finished testing.')
 
-    def init_center_c(self, train_loader: DataLoader, net: BaseNet, eps=0.1):
+    def init_center_c(self, train_loader: DataLoader, net: BaseNet, eps=0.1,  data_config = None,):
         """Initialize hypersphere center c as the mean from an initial forward pass on the data."""
         n_samples = 0
-        c = torch.zeros(net.rep_dim, device=self.device)
-
-        net.eval()
+        c = torch.zeros(16*16, device=self.device) #torch.zeros(net.rep_dim, device=self.device)
+        
+        num_batches = 0
         with torch.no_grad():
-            for data in train_loader:
-                # get the inputs of the batch
-                inputs, _, _ = data
-                inputs = inputs.to(self.device)
-                outputs = net(inputs)
-                n_samples += outputs.shape[0]
-                c += torch.sum(outputs, dim=0)
+            with tqdm.tqdm(train_loader) as tq:
+                for X, y, _ in tq:
+                    inputs = [X[k].to(self.device) for k in data_config.input_names]
+                    outputs = net(*inputs).flatten(start_dim = 1)
+                    n_samples += outputs.shape[0]
+                    c += torch.sum(outputs, dim=0)
+                    num_batches += 1
 
+                    if num_batches >= 30:
+                        break
         c /= n_samples
 
         # If c_i is too close to 0, set to +-eps. Reason: a zero unit can be trivially matched with zero weights.
