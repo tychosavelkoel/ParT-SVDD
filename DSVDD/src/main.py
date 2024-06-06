@@ -8,9 +8,11 @@ import random
 import numpy as np
 
 from utils.config import Config
+from utils.plots import plot_distance, plot_loss
 from utils.visualization.plot_images_grid import plot_images_grid
 from deepSVDD import DeepSVDD
 from datasets.main import load_dataset
+
 
 #ParT packages
 import os
@@ -23,9 +25,10 @@ from torch.utils.data import DataLoader
 from weaver.utils.logger import _logger, _configLogger
 from weaver.utils.dataset import SimpleIterDataset
 from weaver.utils.import_tools import import_module
+from weaver.utils.data.tools import _concat
 
 """
-python main.py mnist mnist_LeNet ../log/mnist_test ../data --objective one-class --lr 0.0001 --n_epochs 50
+python main.py mnist mnist_LeNet ../log/mnist_test ../data --objective one-class --lr 0.0001
 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 --pretrain True --ae_lr 0.0001 --ae_n_epochs 50 
 --ae_lr_milestone 50 --ae_batch_size 200 --ae_weight_decay 0.5e-3 --normal_class 3;
 """
@@ -53,8 +56,7 @@ parser.add_argument('--optimizer_name', default='adam', type=str,
               help='Name of the optimizer to use for Deep SVDD network training.')
 parser.add_argument('--lr', type=float, default=0.001,
               help='Initial learning rate for Deep SVDD network training. Default=0.001')
-parser.add_argument('--n_epochs', type=int, default=50, help='Number of epochs to train.')
-parser.add_argument('--lr_milestone', type=list, default=0,
+parser.add_argument('--lr_milestone', nargs = '+', type=int, default=0,
               help='Lr scheduler milestones at which lr is multiplied by 0.1. Cannot yet be multiple and must be increasing.')
 parser.add_argument('--batch_size', type=int, default=128, help='Batch size for mini-batch training.')
 parser.add_argument('--weight_decay', type=float, default=1e-6,
@@ -66,7 +68,7 @@ parser.add_argument('--ae_optimizer_name', default='adam',
 parser.add_argument('--ae_lr', type=float, default=0.001,
               help='Initial learning rate for autoencoder pretraining. Default=0.001')
 parser.add_argument('--ae_n_epochs', type=int, default=100, help='Number of epochs to train autoencoder.')
-parser.add_argument('--ae_lr_milestone', type=list, default=0,
+parser.add_argument('--ae_lr_milestone',nargs = '+', type=int, default=0,
               help='Lr scheduler milestones at which lr is multiplied by 0.1. Cannot yet be multiple and must be increasing.')
 parser.add_argument('--ae_batch_size', type=int, default=128, help='Batch size for mini-batch autoencoder training.')
 parser.add_argument('--ae_weight_decay', type=float, default=1e-6,
@@ -75,6 +77,14 @@ parser.add_argument('--n_jobs_dataloader', type=int, default=0,
               help='Number of workers for data loading. 0 means that the data will be loaded in the main process.')
 parser.add_argument('--normal_class', type=int, default=0,
               help='Specify the normal class of the dataset (all other classes are considered anomalous).')
+parser.add_argument('--warm_up_n_epochs', type=int, default=0,
+              help='epoch at which training is going to update radius')
+parser.add_argument('--delta', type=float, default=1e-3,
+              help='thresshold to set radius')
+parser.add_argument('--epsilon', type=float, default=1e-5,
+              help='thresshold to finish learning')
+
+
 #Arguments particle transformer
 parser.add_argument('--regression-mode', action='store_true', default=False,
                     help='run in regression mode if this flag is set; otherwise run in classification mode')
@@ -289,7 +299,6 @@ def train_load(args): #From ParT
 
     if args.in_memory and (args.steps_per_epoch is None or args.steps_per_epoch_val is None):
         raise RuntimeError('Must set --steps-per-epoch when using --in-memory!')
-
     train_data = SimpleIterDataset(train_file_dict, args.data_config, for_training=True,
                                    extra_selection=args.extra_selection,
                                    remake_weights=not args.no_remake_weights,
@@ -409,6 +418,26 @@ def model_setup(args, data_config, device='cpu'): #From ParT
     
     return model, model_info
 
+def save_root(args, output_path, data_config, scores_train, observers):
+    """
+    Saves as .root
+    :param data_config:
+    :param scores:
+    :param observers
+    :return:
+    """
+    import awkward as ak
+    from weaver.utils.data.fileio import _write_root
+    output = {}
+    output['Squared_distance'] = scores_train
+    output.update(observers)
+    
+    try:
+        _write_root(output_path, ak.Array(output))
+        _logger.info('Written output to %s' % output_path, color='bold')
+    except Exception as e:
+        _logger.error('Error when writing output ROOT file: \n' + str(e))
+
 def _main(args):
     """
     Deep SVDD, a fully deep method for anomaly detection.
@@ -431,7 +460,6 @@ def _main(args):
     seed = args.seed
     optimizer_name = args.optimizer_name
     lr = args.lr
-    n_epochs = args.n_epochs
     lr_milestone = args.lr_milestone
     batch_size = args.batch_size
     weight_decay = args.weight_decay
@@ -444,6 +472,7 @@ def _main(args):
     ae_weight_decay = args.ae_weight_decay
     n_jobs_dataloader = args.n_jobs_dataloader 
     normal_class = args.normal_class
+    warm_up_n_epochs = args.warm_up_n_epochs
 
     ### From ParT ###
     
@@ -572,7 +601,6 @@ def _main(args):
     # Log training details
     logger.info('Training optimizer: %s' % cfg.settings['optimizer_name'])
     logger.info('Training learning rate: %g' % cfg.settings['lr'])
-    logger.info('Training epochs: %d' % cfg.settings['n_epochs'])
     logger.info('Training learning rate scheduler milestones: %s' % (cfg.settings['lr_milestone'],))
     logger.info('Training batch size: %d' % cfg.settings['batch_size'])
     logger.info('Training weight decay: %g' % cfg.settings['weight_decay'])
@@ -580,19 +608,36 @@ def _main(args):
     # Train model on dataset
     deep_SVDD.train(optimizer_name=cfg.settings['optimizer_name'],
                     lr=cfg.settings['lr'],
-                    n_epochs=cfg.settings['n_epochs'],
                     lr_milestones=cfg.settings['lr_milestone'],
                     batch_size=cfg.settings['batch_size'],
                     weight_decay=cfg.settings['weight_decay'],
                     device=device,
                     n_jobs_dataloader=n_jobs_dataloader,
                     train_loader = train_loader,
+                    val_loader =  val_loader,
                     data_config = train_data_config,
-                    steps_per_epoch = args.steps_per_epoch)
+                    steps_per_epoch = args.steps_per_epoch,
+                    steps_per_epoch_val = args.steps_per_epoch_val,
+                    min_epochs = args.min_epochs,
+                    max_epochs = args.max_epochs,
+                    warm_up_n_epochs = warm_up_n_epochs,
+                    epsilon = args.epsilon,
+                    delta = args.delta)
+    
+    train_scores = deep_SVDD.results['train_scores']
+    val_scores = deep_SVDD.results['val_scores']
+    loss_train = deep_SVDD.results['loss']
+    loss_val = deep_SVDD.results['loss_val']
+    loss_condition_train = deep_SVDD.results['loss_condition']
+    loss_condition_val = deep_SVDD.results['loss_condition_val']
+    train_observers = deep_SVDD.Train_observers
+    train_observers = {k: _concat(v) for k, v in train_observers.items()}
+    
 
     test_loaders, test_data_config = test_load(args)
     for name, get_test_loader in test_loaders.items():
             test_loader = get_test_loader()
+
 
     # Test model
     deep_SVDD.test(device=device, 
@@ -601,11 +646,56 @@ def _main(args):
                     data_config = test_data_config,
                     steps_per_epoch = args.steps_per_epoch)
 
-    # Plot most anomalous and most normal (within-class) test samples
-    scores = deep_SVDD.results['test_scores']
+    
+    test_scores = deep_SVDD.results['test_scores']
+    test_observers = deep_SVDD.Test_observers
+    test_observers = {k: _concat(v) for k, v in test_observers.items()}
+
+    if args.predict_output:
+        predict_output = os.path.join(
+            os.path.dirname(args.model_prefix),
+            'predict_output', args.predict_output)       
+        os.makedirs(os.path.dirname(predict_output), exist_ok=True)
+        output_path2 = os.path.join(
+            os.path.dirname(args.model_prefix),
+            'predict_output', "train_results.root")
+        if name == '':
+            output_path = predict_output
+        else:
+            base, ext = os.path.splitext(predict_output)
+            output_path = base + '_' + name + ext
+        if output_path.endswith('.root'):
+            save_root(args, output_path2, test_data_config, train_scores, train_observers)
+            save_root(args, output_path, test_data_config, test_scores, test_observers)
+
     #idx_sorted = indices[labels == 0][np.argsort(scores[labels == 0])]  # sorted from lowest to highest anomaly score
+    if dataset_name == "ParT":
+        radius = deep_SVDD.R
+        plot_distance(radius**2, train_scores, title = os.path.join(os.path.dirname(args.model_prefix),
+                            'predict_output', "distance_train"))
+        plot_distance(radius**2, val_scores, title = os.path.join(os.path.dirname(args.model_prefix),
+                            'predict_output', "distance_val"))
+        plot_loss(loss_train, loss_val, title = os.path.join(os.path.dirname(args.model_prefix),
+                            'predict_output', "loss"))
+        plot_loss(loss_condition_train, loss_condition_val, ylabel = 'Loss condition', title = os.path.join(os.path.dirname(args.model_prefix),
+                            'predict_output', "loss_condition"))
+        plot_distance(radius**2, test_scores, title = os.path.join(os.path.dirname(args.model_prefix),
+                            'predict_output', "distance_test"))
+        
+        # Save results, model, and configuration
+        deep_SVDD.save_results(export_json= os.path.join(os.path.dirname(args.model_prefix),
+                            'predict_output', "results.json"))
+        deep_SVDD.save_model(export_model= os.path.join(os.path.dirname(args.model_prefix),
+                            'predict_output', "model.tar"), save_ae=False)
+        #cfg.save_config(export_json=xp_path + '/config.json')
+        parsed = parser.parse_args()
+
+        with open(os.path.join(os.path.dirname(args.model_prefix),
+                            'predict_output', "config.json"), 'w') as fp:
+                json.dump(parsed.__dict__, fp)
 
     '''
+    # Plot most anomalous and most normal (within-class) test samples
     if dataset_name in ('mnist', 'cifar10'):
 
         if dataset_name == 'mnist':
@@ -620,15 +710,8 @@ def _main(args):
         plot_images_grid(X_outliers, export_img=xp_path + '/outliers', title='Most anomalous examples', padding=2)
     '''
 
-    #if dataset_name = "ParT":
 
-
-    # Save results, model, and configuration
-    deep_SVDD.save_results(export_json=xp_path + '/results.json')
-    deep_SVDD.save_model(export_model=xp_path + '/model.tar', save_ae = False)
-    #cfg.save_config(export_json=xp_path + '/config.json')
-    with open(xp_path + '/config.json', 'w') as fp:
-            json.dump(list(cfg.settings), fp)
+    
 
 def main():
     args = parser.parse_args()
@@ -652,7 +735,7 @@ def main():
     if '{auto}' in args.model_prefix or '{auto}' in args.log:
         import hashlib
         import time
-        model_name = time.strftime('%Y%m%d-%H%M%S') + "_" + os.path.basename(args.network_config).replace('.py', '')
+        model_name = time.strftime('%H%M%S')
         if len(args.network_option):
             model_name = model_name + "_" + hashlib.md5(str(args.network_option).encode('utf-8')).hexdigest()
         model_name += '_{optim}_lr{lr}_batch{batch}'.format(lr=args.start_lr,
@@ -661,6 +744,10 @@ def main():
         args.model_prefix = args.model_prefix.replace('{auto}', model_name)
         args.log = args.log.replace('{auto}', model_name)
         print('Using auto-generated model prefix %s' % args.model_prefix)
+    if '{datum}' in args.model_prefix or '{auto}' in args.log:
+        model_date = time.strftime("%Y%m%d")
+        args.model_prefix = args.model_prefix.replace('{datum}', model_date)
+        args.log = args.log.replace('{datum}', model_date)
 
     if args.predict_gpus is None:
         args.predict_gpus = args.gpus
@@ -695,8 +782,6 @@ def main():
             _main(opts)
     else:
         _main(args)
-    print(args)
-    _main(args)
 
 
 if __name__ == '__main__':

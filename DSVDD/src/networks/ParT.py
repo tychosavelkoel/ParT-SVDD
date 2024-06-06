@@ -183,12 +183,12 @@ class Embed(nn.Module):
     def __init__(self, input_dim, dims, normalize_input=True, activation='gelu'):
         super().__init__()
     
-        self.input_bn = nn.BatchNorm1d(input_dim) if normalize_input else None
+        self.input_bn = nn.BatchNorm1d(input_dim, affine=False) if normalize_input else None
         module_list = []
         for dim in dims:
             module_list.extend([
-                nn.LayerNorm(input_dim),
-                nn.Linear(input_dim, dim),
+                nn.LayerNorm(input_dim, bias=False),
+                nn.Linear(input_dim, dim, bias=False),
                 nn.GELU() if activation == 'gelu' else nn.ReLU(),
             ])
             input_dim = dim
@@ -226,8 +226,8 @@ class PairEmbed(nn.Module):
             module_list = [nn.BatchNorm1d(input_dim)] if normalize_input else []
             for dim in dims:
                 module_list.extend([
-                    nn.Conv1d(input_dim, dim, 1),
-                    nn.BatchNorm1d(dim),
+                    nn.Conv1d(input_dim, dim, 1, bias = False),
+                    nn.BatchNorm1d(dim, affine=False),
                     nn.GELU() if activation == 'gelu' else nn.ReLU(),
                 ])
                 input_dim = dim
@@ -237,11 +237,11 @@ class PairEmbed(nn.Module):
         elif self.mode == 'sum':
             if pairwise_lv_dim > 0:
                 input_dim = pairwise_lv_dim
-                module_list = [nn.BatchNorm1d(input_dim)] if normalize_input else []
+                module_list = [nn.BatchNorm1d(input_dim, affine=False)] if normalize_input else []
                 for dim in dims:
                     module_list.extend([
-                        nn.Conv1d(input_dim, dim, 1),
-                        nn.BatchNorm1d(dim),
+                        nn.Conv1d(input_dim, dim, 1, bias = False),
+                        nn.BatchNorm1d(dim, affine=False),
                         nn.GELU() if activation == 'gelu' else nn.ReLU(),
                     ])
                     input_dim = dim
@@ -333,22 +333,23 @@ class Block(nn.Module):
         self.head_dim = embed_dim // num_heads
         self.ffn_dim = embed_dim * ffn_ratio
 
-        self.pre_attn_norm = nn.LayerNorm(embed_dim)
+        self.pre_attn_norm = nn.LayerNorm(embed_dim, bias=False)
         self.attn = nn.MultiheadAttention(
             embed_dim,
             num_heads,
+            bias=False,
             dropout=attn_dropout,
             add_bias_kv=add_bias_kv,
         )
-        self.post_attn_norm = nn.LayerNorm(embed_dim) if scale_attn else None
+        self.post_attn_norm = nn.LayerNorm(embed_dim, bias=False) if scale_attn else None
         self.dropout = nn.Dropout(dropout)
 
-        self.pre_fc_norm = nn.LayerNorm(embed_dim)
-        self.fc1 = nn.Linear(embed_dim, self.ffn_dim)
+        self.pre_fc_norm = nn.LayerNorm(embed_dim, bias=False)
+        self.fc1 = nn.Linear(embed_dim, self.ffn_dim, bias=False)
         self.act = nn.GELU() if activation == 'gelu' else nn.ReLU()
         self.act_dropout = nn.Dropout(activation_dropout)
-        self.post_fc_norm = nn.LayerNorm(self.ffn_dim) if scale_fc else None
-        self.fc2 = nn.Linear(self.ffn_dim, embed_dim)
+        self.post_fc_norm = nn.LayerNorm(self.ffn_dim, bias=False) if scale_fc else None
+        self.fc2 = nn.Linear(self.ffn_dim, embed_dim, bias=False)
 
         self.c_attn = nn.Parameter(torch.ones(num_heads), requires_grad=True) if scale_heads else None
         self.w_resid = nn.Parameter(torch.ones(embed_dim), requires_grad=True) if scale_resids else None
@@ -405,7 +406,7 @@ class ParticleTransformer(nn.Module):
                  pair_extra_dim=0,
                  remove_self_pair=False,
                  use_pre_activation_pair=True,
-                 embed_dims=[128, 512, 128, 64],
+                 embed_dims=[128, 512, 128],
                  pair_embed_dims=[64, 64, 64],
                  num_heads=8,
                  num_layers=8,
@@ -442,21 +443,21 @@ class ParticleTransformer(nn.Module):
             remove_self_pair=remove_self_pair, use_pre_activation_pair=use_pre_activation_pair,
             for_onnx=for_inference) if pair_embed_dims is not None and pair_input_dim + pair_extra_dim > 0 else None
         self.blocks = nn.ModuleList([Block(**cfg_block) for _ in range(num_layers)])
-        self.norm = nn.LayerNorm(embed_dim)
+        self.norm = nn.LayerNorm(embed_dim, bias=False)
 
+        self.pool = nn.AvgPool2d((1, 64))
+        
         if fc_params is not None:
             fcs = []
             in_dim = embed_dim
             for out_dim, drop_rate in fc_params:
-                fcs.append(nn.Sequential(nn.Linear(in_dim, out_dim), nn.ReLU(), nn.Dropout(drop_rate)))
+                fcs.append(nn.Sequential(nn.Linear(in_dim, out_dim, bias=False), nn.ReLU(), nn.Dropout(drop_rate)))
                 in_dim = out_dim
             #fcs.append(nn.Linear(in_dim, num_classes))
             self.fc = nn.Sequential(*fcs)
         else:
             self.fc = None
         
-
-        self.pool = nn.MaxPool2d((8, 4))
         self.rep_dim = None
         
 
@@ -474,8 +475,7 @@ class ParticleTransformer(nn.Module):
             if not self.for_inference:
                 if uu_idx is not None:
                     uu = build_sparse_tensor(uu, uu_idx, x.size(-1))
-            #x, v, mask, uu = self.trimmer(x, v, mask, uu)
-            mask = mask.bool()
+            x, v, mask, uu = self.trimmer(x, v, mask, uu)
             padding_mask = ~mask.squeeze(1)  # (N, P)
         
         with torch.cuda.amp.autocast(enabled=self.use_amp):
@@ -488,23 +488,17 @@ class ParticleTransformer(nn.Module):
             # transform
             for block in self.blocks:
                 x = block(x, padding_mask=padding_mask, attn_mask=attn_mask)
-
-            #torch.save(x, 'tensor.pt')
-            #print(x.shape)
-            #print(x[:,0:1,:].shape, x[:,1:2,:].shape, x[:,2:3,:].shape)
             
+            torch.save(x.permute(1,2,0), 'Output_10pt.pt')
             x = self.pool(x.permute(1,2,0))
 
             # fc
             if self.fc is None:
                 self.rep_dim = x.shape[1]*x.shape[2]
-                print(self.rep_dim)
                 return x
-            output = self.fc(x)
-
+            output = self.fc(x.permute(2,0,1))
             self.rep_dim = output.shape[1]*output.shape[2]
-            print(self.rep_dim)
-            #if self.for_inference:
-            #    output = torch.softmax(output, dim=1)
+            
             #print('output:\n', output.shape, x.shape)
-            return output
+            return output.permute(1,0,2)
+

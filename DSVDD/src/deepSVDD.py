@@ -33,6 +33,7 @@ class DeepSVDD(object):
         assert (0 < nu) & (nu <= 1), "For hyperparameter nu, it must hold: 0 < nu <= 1."
         self.nu = nu
         self.R = 0.0  # hypersphere radius R
+        self.Q = 0.0
         self.c = None  # hypersphere center c
 
         self.net_name = None
@@ -45,11 +46,23 @@ class DeepSVDD(object):
         self.ae_trainer = None
         self.ae_optimizer_name = None
 
+        self.Train_observers = None
+        self.Test_observers = None
+
         self.results = {
             'train_time': None,
             'test_auc': None,
             'test_time': None,
             'test_scores': None,
+            'train_scores': None,
+            'val_scores': None,
+            'loss': None,
+            'loss_val': None,
+            'loss_condition': None,
+            'loss_condition_val': None,
+            'radius': None,
+            'quantile': None
+
         }
 
     def set_network(self, net_name, data_config):
@@ -57,35 +70,53 @@ class DeepSVDD(object):
         self.net_name = net_name
         self.net = build_network(net_name, data_config)
 
-    def train(self, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 50,
+    def train(self, optimizer_name: str = 'adam', lr: float = 0.001,
               lr_milestones: tuple = (), batch_size: int = 128, weight_decay: float = 1e-6, device: str = 'cuda',
-              n_jobs_dataloader: int = 0, train_loader = None, data_config = None, steps_per_epoch = 100):
+              n_jobs_dataloader: int = 0, train_loader = None, val_loader = None, data_config = None, steps_per_epoch = 100,
+              steps_per_epoch_val = 50, min_epochs = 20, max_epochs = 5, warm_up_n_epochs = 0,
+              epsilon: float = 1e-5, delta: float = 1e-3):
         """Trains the Deep SVDD model on the training data."""
-
+        print("In TRAIN")
         self.optimizer_name = optimizer_name
-        self.trainer = DeepSVDDTrainer(self.objective, self.R, self.c, self.nu, optimizer_name, lr=lr,
-                                       n_epochs=n_epochs, lr_milestones=lr_milestones, batch_size=batch_size,
-                                       weight_decay=weight_decay, device=device, n_jobs_dataloader=n_jobs_dataloader)
+        self.trainer = DeepSVDDTrainer(self.objective, self.R, self.Q, self.c, self.nu, optimizer_name, lr=lr,
+                                       lr_milestones=lr_milestones, batch_size=batch_size,
+                                       weight_decay=weight_decay, device=device, n_jobs_dataloader=n_jobs_dataloader, 
+                                       min_epochs = min_epochs, max_epochs = max_epochs, warm_up_n_epochs = warm_up_n_epochs,
+                                       epsilon = epsilon, delta = delta)
         # Get the model
-        self.net = self.trainer.train(self.net, train_loader = train_loader,  data_config = data_config, steps_per_epoch = steps_per_epoch)
+        self.net = self.trainer.train(self.net, train_loader = train_loader, val_loader = val_loader, data_config = data_config,
+                                     steps_per_epoch = steps_per_epoch, steps_per_epoch_val = steps_per_epoch_val)
+        #Get results
         self.R = float(self.trainer.R.cpu().data.numpy())  # get float
         self.c = self.trainer.c.cpu().data.numpy().tolist()  # get list
         self.results['train_time'] = self.trainer.train_time
+        self.results['train_scores'] = self.trainer.train_scores
+        self.results['val_scores'] = self.trainer.val_scores
+        self.results['loss'] = self.trainer.loss
+        self.results['loss_val'] = self.trainer.loss_val
+        self.results['loss_condition'] = self.trainer.loss_condition
+        self.results['loss_condition_val'] = self.trainer.loss_condition_val
+        self.results["radius"] = self.R
+        self.Train_observers = self.trainer.Train_observers
+        
 
     def test(self, device: str = 'cuda', n_jobs_dataloader: int = 0, test_loader = None, 
              data_config = None, steps_per_epoch = 100):
 
         """Tests the Deep SVDD model on the test data."""
-
+        print("In TEST")
         if self.trainer is None:
+            print("yes")
             self.trainer = DeepSVDDTrainer(self.objective, self.R, self.c, self.nu,
                                            device=device, n_jobs_dataloader=n_jobs_dataloader)
-
-        self.trainer.test(self.net, test_loader = test_loader,  data_config = data_config)
+        self.trainer.test(self.net, test_loader = test_loader,  data_config = data_config, steps_per_epoch = steps_per_epoch)
         # Get results
+        self.Q = float(self.trainer.Q.cpu().data.numpy())
         self.results['test_auc'] = self.trainer.test_auc
         self.results['test_time'] = self.trainer.test_time
         self.results['test_scores'] = self.trainer.test_scores
+        self.results["quantile"] = self.Q
+        self.Test_observers = self.trainer.Test_observers
 
     def pretrain(self, optimizer_name: str = 'adam', lr: float = 0.001, n_epochs: int = 100,
                  lr_milestones: tuple = (), batch_size: int = 128, weight_decay: float = 1e-6, device: str = 'cuda',

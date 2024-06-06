@@ -4,16 +4,16 @@ modelopts="networks/example_ParticleTransformer.py --use-amp --optimizer-option 
 
 
 python main.py \
-    mnist ParT ../log/mnist_test ../data --objective one-class\
-     --lr 0.0001 --n_epochs 2 --lr_milestone 50 --batch_size 200 --weight_decay 0.5e-6 \
-     --ae_lr 0.0001 --ae_n_epochs 2 --ae_lr_milestone 50 --ae_batch_size 200 --ae_weight_decay 0.5e-3\
-      --normal_class 3 \
+    ParT ParT ../log/mnist_test ../data --objective soft-boundary\
+     --lr 0.0001 --lr_milestone 50 --batch_size 512 --weight_decay 0.5e-6 \
+     --nu 0.02 --warm_up_n_epochs 20\
      --data-train "/data/alice/wvolgering/soft/JetToyHI/Data_Train.root" \
-     --data-test "/data/alice/wvolgering/soft/JetToyHI/Data_Test.root" \
+     --data-test "/data/alice/wvolgering/soft/JetToyHI/Data_Test_350pt.root" \
      --network-config $modelopts --data-config ../data/Test/test_kin.yaml \
-     --log logs/Test/Test_${model}_{auto}.log --model-prefix training/Test/${model}/{auto}/net \
+     --log logs/Test/Test_${model}_{auto}.log --model-prefix training/Test/{datum}/${model}/{auto}/net \
      --num-workers 1 --fetch-step 1 --in-memory --train-val-split 0.8889 \
-     --samples-per-epoch 1600 --samples-per-epoch-val 200 \
-     --min-epochs 0 --max-epochs 1 --gpus 0 \
-     --predict-output predict/pred.root --optimizer ranger \
-     --tensorboard Quenched_${FEATURE_TYPE}_${model}
+     --samples-per-epoch 60000 --samples-per-epoch-val 10000 \
+     --min-epochs 5 --max-epochs 200 --gpus 0 \
+     --predict-output test_results.root --optimizer ranger \
+     --tensorboard Quenched_${FEATURE_TYPE}_${model} \
+     --delta 1e-6 --epsilon 1e-8 

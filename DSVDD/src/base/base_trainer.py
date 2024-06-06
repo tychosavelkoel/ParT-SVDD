@@ -6,12 +6,11 @@ from .base_net import BaseNet
 class BaseTrainer(ABC):
     """Trainer base class."""
 
-    def __init__(self, optimizer_name: str, lr: float, n_epochs: int, lr_milestones: tuple, batch_size: int,
+    def __init__(self, optimizer_name: str, lr: float, lr_milestones: tuple, batch_size: int,
                  weight_decay: float, device: str, n_jobs_dataloader: int):
         super().__init__()
         self.optimizer_name = optimizer_name
         self.lr = lr
-        self.n_epochs = n_epochs
         self.lr_milestones = lr_milestones
         self.batch_size = batch_size
         self.weight_decay = weight_decay

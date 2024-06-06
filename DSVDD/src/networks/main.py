@@ -32,10 +32,10 @@ def build_network(net_name, data_config, **kwargs):
             num_heads=8,
             num_layers=8,
             block_params=None,
-            #fc_params=[(32,0.1)],
+            #fc_params=[(128,0.1)],
             activation='gelu',
             # misc
-            trim=True,
+            trim=False,
             for_inference=False,
             use_amp=True
         )
