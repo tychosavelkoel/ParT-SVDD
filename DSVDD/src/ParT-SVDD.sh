@@ -12,8 +12,8 @@ python main.py \
      --network-config $modelopts --data-config ../data/Test/test_kin.yaml \
      --log logs/Test/Test_${model}_{auto}.log --model-prefix training/Test/{datum}/${model}/{auto}/net \
      --num-workers 1 --fetch-step 1 --in-memory --train-val-split 0.8889 \
-     --samples-per-epoch 60000 --samples-per-epoch-val 10000 \
-     --min-epochs 5 --max-epochs 200 --gpus 0 \
+     --samples-per-epoch 80000 --samples-per-epoch-val 10000 \
+     --min-epochs 5 --max-epochs 220 --gpus 0 \
      --predict-output test_results.root --optimizer ranger \
      --tensorboard Quenched_${FEATURE_TYPE}_${model} \
-     --delta 1e-6 --epsilon 1e-8 
+     --delta 1e-5 --epsilon 1e-8

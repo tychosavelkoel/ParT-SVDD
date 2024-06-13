@@ -168,8 +168,6 @@ class DeepSVDDTrainer(BaseTrainer):
                             
                         else:
                             loss = torch.mean(dist)
-                        
-                        self.Q.data = torch.tensor(get_radius(dist, self.nu), device=self.device)
 
                         loss_epoch_val += loss.item()
                         n_batches_val += 1
@@ -278,6 +276,8 @@ class DeepSVDDTrainer(BaseTrainer):
                     
                     for k, v in Z.items():
                         self.Test_observers[k].append(v)
+
+                    self.Q.data = torch.tensor(get_radius(dist, self.nu), device=self.device)
 
                     n_batches+=1
                     if steps_per_epoch is not None and n_batches >= steps_per_epoch:

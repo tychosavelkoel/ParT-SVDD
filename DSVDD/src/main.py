@@ -61,6 +61,17 @@ parser.add_argument('--lr_milestone', nargs = '+', type=int, default=0,
 parser.add_argument('--batch_size', type=int, default=128, help='Batch size for mini-batch training.')
 parser.add_argument('--weight_decay', type=float, default=1e-6,
               help='Weight decay (L2 penalty) hyperparameter for Deep SVDD objective.')
+parser.add_argument('--warm_up_n_epochs', type=int, default=0,
+              help='epoch at which training is going to update radius')
+parser.add_argument('--delta', type=float, default=1e-3,
+              help='thresshold to set radius')
+parser.add_argument('--epsilon', type=float, default=1e-5,
+              help='thresshold to finish learning')
+parser.add_argument('--n_jobs_dataloader', type=int, default=0,
+              help='Number of workers for data loading. 0 means that the data will be loaded in the main process.')
+parser.add_argument('--normal_class', type=int, default=0,
+              help='Specify the normal class of the dataset (all other classes are considered anomalous).')
+#for pretrain:
 parser.add_argument('--pretrain', type=bool, default=False,
               help='Pretrain neural network parameters via autoencoder.')
 parser.add_argument('--ae_optimizer_name', default='adam',
@@ -73,17 +84,6 @@ parser.add_argument('--ae_lr_milestone',nargs = '+', type=int, default=0,
 parser.add_argument('--ae_batch_size', type=int, default=128, help='Batch size for mini-batch autoencoder training.')
 parser.add_argument('--ae_weight_decay', type=float, default=1e-6,
               help='Weight decay (L2 penalty) hyperparameter for autoencoder objective.')
-parser.add_argument('--n_jobs_dataloader', type=int, default=0,
-              help='Number of workers for data loading. 0 means that the data will be loaded in the main process.')
-parser.add_argument('--normal_class', type=int, default=0,
-              help='Specify the normal class of the dataset (all other classes are considered anomalous).')
-parser.add_argument('--warm_up_n_epochs', type=int, default=0,
-              help='epoch at which training is going to update radius')
-parser.add_argument('--delta', type=float, default=1e-3,
-              help='thresshold to set radius')
-parser.add_argument('--epsilon', type=float, default=1e-5,
-              help='thresshold to finish learning')
-
 
 #Arguments particle transformer
 parser.add_argument('--regression-mode', action='store_true', default=False,
@@ -209,6 +209,7 @@ parser.add_argument('--backend', type=str, choices=['gloo', 'nccl', 'mpi'], defa
                     help='backend for distributed training')
 parser.add_argument('--cross-validation', type=str, default=None,
                     help='enable k-fold cross validation; input format: `variable_name%%k`')
+
 
 def to_filelist(args, mode='train'):
     if mode == 'train':
@@ -418,7 +419,7 @@ def model_setup(args, data_config, device='cpu'): #From ParT
     
     return model, model_info
 
-def save_root(args, output_path, data_config, scores_train, observers):
+def save_root(args, output_path, data_config, scores, observers):
     """
     Saves as .root
     :param data_config:
@@ -429,7 +430,7 @@ def save_root(args, output_path, data_config, scores_train, observers):
     import awkward as ak
     from weaver.utils.data.fileio import _write_root
     output = {}
-    output['Squared_distance'] = scores_train
+    output['Squared_distance'] = scores
     output.update(observers)
     
     try:
@@ -665,7 +666,7 @@ def _main(args):
             base, ext = os.path.splitext(predict_output)
             output_path = base + '_' + name + ext
         if output_path.endswith('.root'):
-            save_root(args, output_path2, test_data_config, train_scores, train_observers)
+            save_root(args, output_path2, train_data_config, train_scores, train_observers)
             save_root(args, output_path, test_data_config, test_scores, test_observers)
 
     #idx_sorted = indices[labels == 0][np.argsort(scores[labels == 0])]  # sorted from lowest to highest anomaly score

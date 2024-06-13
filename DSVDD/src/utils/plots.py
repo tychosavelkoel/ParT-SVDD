@@ -10,7 +10,7 @@ def plot_distance(radius, distance, title = 'Distance'):
      
     """ 
     n = len(distance)
-    fig = plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(10, 7))
     ax = fig.add_subplot(1, 1, 1)
     radius = np.ones((n, 1))*radius
 
@@ -37,20 +37,24 @@ def plot_distance(radius, distance, title = 'Distance'):
             markerfacecolor='w', 
             markersize=6)
     
-    ax.set_xlabel('Samples')
-    ax.set_ylabel('Squared distance')
-        
+    ax.set_xlabel('Samples', fontsize = 22)
+    ax.set_ylabel('Squared distance', fontsize = 22)
+    ax.set_ylim(0,None)
+    ax.tick_params(axis="both", labelsize = 18)
+
     ax.legend(["Distance", "Radius"], 
                ncol=1, loc=0, 
                edgecolor='black', 
-               markerscale=1, fancybox=True)
+               markerscale=1, 
+               fancybox=True,
+               fontsize = 18)
     ax.yaxis.grid()
     plt.savefig(title + '.png')
     plt.savefig(title + '.pdf')
 
 def plot_loss(loss, loss_val, ylabel = 'Loss', title = 'loss'):
     n = len(loss)
-    fig = plt.figure(figsize=(10, 6))
+    fig = plt.figure(figsize=(10, 7))
     ax = fig.add_subplot(1, 1, 1)
 
     ax.plot(loss, 
@@ -71,15 +75,18 @@ def plot_loss(loss, loss_val, ylabel = 'Loss', title = 'loss'):
             markerfacecolor='w', 
             markersize=6)
        
-    ax.set_xlabel('Epoch')
+    ax.set_xlabel('Epoch', fontsize = 22)
     ax.set_xlim(0,len(loss))
-    ax.set_ylabel(ylabel)
+    ax.set_ylabel(ylabel, fontsize = 22)
     ax.set_yscale('log')
+    ax.tick_params(axis="both", labelsize = 18)
     
     ax.legend(["train", "val"], 
                ncol=1, loc=0, 
                edgecolor='black', 
-               markerscale=1, fancybox=True)
+               markerscale=1, 
+               fancybox=True,
+               fontsize = 18)
 
     ax.yaxis.grid()
     plt.savefig(title + '.png')
