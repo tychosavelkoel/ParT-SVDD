@@ -12,6 +12,10 @@ pip install 'weaver-core>=0.4'
 
 
 ## Run code
+```
+cd DSVDD/src/
+./ParT-SVDD.sh
+```
 [ParT](https://github.com/jet-universe/particle_transformer)
 [Deep SVDD](https://github.com/lukasruff/Deep-SVDD-PyTorch/tree/master)
 [SVDD](https://github.com/hqucms/weaver-core/tree/main)
