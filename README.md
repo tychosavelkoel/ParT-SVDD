@@ -15,7 +15,7 @@ Import the JetMed_pthat_350 files from jetquenchingtools.web.cern.ch using
 wget https://jetquenchingtools.web.cern.ch/JetQuenchingTools/samples/LundPlaneMC/JetMed-pthat_350-vac.res
 wget https://jetquenchingtools.web.cern.ch/JetQuenchingTools/samples/LundPlaneMC/JetMed-pthat_350-qhat_1.5-L_4-asmed_0.24.res
 ```
-Create a root-file for both the vacuum and non-vacuum set from this data with the variables you need for the input using the Data.cc file. For the vacuum set run
+From this data create a root-file with the input variables for both the vacuum and non-vacuum set using the Data.cc file. For the vacuum set run
 ```
 ./Data -hard samples/JetMed-pthat_350-vac.res -nev 100000
 ```
