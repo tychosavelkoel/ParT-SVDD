@@ -31,6 +31,8 @@ In the test_kin.yaml file, the datastructure is described.
 cd DSVDD/src/
 ./ParT-SVDD.sh
 ```
+
+To check all possible command-line arguments, run `python main.py -h`. 
 [ParT](https://github.com/jet-universe/particle_transformer)
 [Deep SVDD](https://github.com/lukasruff/Deep-SVDD-PyTorch/tree/master)
 [SVDD](https://github.com/hqucms/weaver-core/tree/main)
