@@ -1,6 +1,6 @@
 # ParT-SVDD
 
-Install the software as described in [JetToyHI](https://github.com/mverwe/JetToyHI/blob/master/README_ForBScStudents.md)
+
 
 ## Create conda environment
 Before running the code, set up a conda environment. The code is written in `python 3.9`. It uses `pytorch 2.3.0` with CUDA and [weaver](https://github.com/hqucms/weaver-core/tree/main):
@@ -15,7 +15,7 @@ Import the JetMed_pthat_350 files from jetquenchingtools.web.cern.ch using
 wget https://jetquenchingtools.web.cern.ch/JetQuenchingTools/samples/LundPlaneMC/JetMed-pthat_350-vac.res
 wget https://jetquenchingtools.web.cern.ch/JetQuenchingTools/samples/LundPlaneMC/JetMed-pthat_350-qhat_1.5-L_4-asmed_0.24.res
 ```
-From this data create a root-file with the input variables for both the vacuum and non-vacuum set. I used the Data.cc file for this:
+From this data create a root-file with the input variables for both the vacuum and non-vacuum set using [JetToyHI](https://github.com/mverwe/JetToyHI/blob/master/README_ForBScStudents.md) from Marta Verweij. For this project we wrote `Data.cc` based on `runSimpleJetAnalysis.cc`:
 ```
 ./Data -hard samples/JetMed-pthat_350-vac.res -nev 100000
 ```
@@ -27,12 +27,15 @@ In the test_kin.yaml file, the datastructure is described.
 - Observers: Define which features are saved afterwards. 
 
 ## Run code
+With any session, the configuration and results are saved in a `.json` file. Also the observables are saved in a root file for both the training and test data. Finally plots of the squared distance, cost and cost condition are created. All these outputs are saved in `Training/Test`.
+To start a session run
 ```
 cd DSVDD/src/
 ./ParT-SVDD.sh
 ```
-
-To check all possible command-line arguments, run `python main.py -h`. 
+To check all possible command-line arguments as used in `ParT-SVDD.sh`, run `python main.py -h`. 
 [ParT](https://github.com/jet-universe/particle_transformer)
 [Deep SVDD](https://github.com/lukasruff/Deep-SVDD-PyTorch/tree/master)
 [SVDD](https://github.com/hqucms/weaver-core/tree/main)
+
+
