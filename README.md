@@ -1,5 +1,8 @@
 # ParT-SVDD
+This code is used to explore jets using [Deep SVDD](https://github.com/lukasruff/Deep-SVDD-PyTorch/tree/master) with a neural network based on the particle transformer~\cite{ParT}.
 
+## Introduction
+[Support Vector Data Description](https://github.com/hqucms/weaver-core/tree/main) (SVDD)~\cite{SVDD} is an OCC method, which searches for the smallest hypersphere that fit the training data. Deep SVDD jointly trains a neural network and minimises the volume of the hypersphere of SVDD. The neural network is used to abstract more/other features from the jets, then the known physical features. Here we used a neural network based on the [particle transformer](https://github.com/jet-universe/particle_transformer) (ParT). The main aspect of a Transformer based neural network, is the use of self attention. This attention mechanism is used to learn the relation between the different input elements.
 
 
 ## Create conda environment
@@ -17,7 +20,7 @@ Import the JetMed_pthat_350 files from jetquenchingtools.web.cern.ch using
 wget https://jetquenchingtools.web.cern.ch/JetQuenchingTools/samples/LundPlaneMC/JetMed-pthat_350-vac.res
 wget https://jetquenchingtools.web.cern.ch/JetQuenchingTools/samples/LundPlaneMC/JetMed-pthat_350-qhat_1.5-L_4-asmed_0.24.res
 ```
-From this data create a root-file with the input variables for both the vacuum and non-vacuum set using [JetToyHI](https://github.com/mverwe/JetToyHI/blob/master/README_ForBScStudents.md) from Marta Verweij. For this project we added the option `addSingle` to the include/TreeWriter.hh file. Furthermore we wrote `Data.cc` based on `runSimpleJetAnalysis.cc` to create the root-file. For this run:
+From this data create a root-file with the input variables for both the vacuum and non-vacuum set using [JetToyHI](https://github.com/mverwe/JetToyHI/blob/master/README_ForBScStudents.md) from Marta Verweij. For this project we added the option `addSingle` to `include/TreeWriter.hh`. Furthermore we wrote `Data.cc` based on `runSimpleJetAnalysis.cc` to create the root-file. For this run:
 ```
 ./Data -hard samples/JetMed-pthat_350-vac.res -nev 100000
 ```
@@ -36,8 +39,8 @@ cd DSVDD/src/
 ./ParT-SVDD.sh
 ```
 To check all possible command-line arguments as used in `ParT-SVDD.sh`, run `python main.py -h`. 
-[ParT](https://github.com/jet-universe/particle_transformer)
-[Deep SVDD](https://github.com/lukasruff/Deep-SVDD-PyTorch/tree/master)
-[SVDD](https://github.com/hqucms/weaver-core/tree/main)
+
+
+
 
 
