@@ -11,7 +11,7 @@ conda install pytorch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 pytorch-cuda=
 pip install 'weaver-core>=0.4'
 ```
 
-To load the observers for the training, set `load_observers=True` in line 361 of the file weaver/utils/dataset.py.
+To load the observers for the training, set `load_observers=True` in line 361 of the file `weaver/utils/dataset.py`.
 
 ## Data
 Import the JetMed_pthat_350 files from jetquenchingtools.web.cern.ch using
