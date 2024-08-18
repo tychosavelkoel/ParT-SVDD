@@ -13,7 +13,7 @@ pip install 'weaver-core>=0.4'
 
 To load the observers for the training, set `load_observers=True` in line 361 of the file `weaver/utils/dataset.py`.
 
-Finally, one needs to install `pyarrow` using:
+Finally, install `pyarrow` using:
 ```
 conda install -c conda-forge pyarrow
 ```
