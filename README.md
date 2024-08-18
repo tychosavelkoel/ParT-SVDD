@@ -1,7 +1,6 @@
 # ParT-SVDD
 This code is used to explore jets using [Deep SVDD](https://github.com/lukasruff/Deep-SVDD-PyTorch/tree/master) with a neural network based on the [particle transformer](https://github.com/jet-universe/particle_transformer) (ParT).
 
-## Introduction
 [Support Vector Data Description](https://github.com/hqucms/weaver-core/tree/main) (SVDD) is an One Class Classification method, which searches for the smallest hypersphere that fit the training data. Deep SVDD jointly trains a neural network and minimises the volume of the hypersphere of SVDD. The neural network is used to abstract more/other features from the jets, then the known physical features. Here we used a neural network based on the particle transformer. The main aspect of a Transformer based neural network, is the use of self attention. This attention mechanism is used to learn the relation between the different input elements.
 
 
