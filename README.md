@@ -5,7 +5,7 @@ This code is used to explore jets using [Deep SVDD](https://github.com/lukasruff
 
 
 ## Create conda environment
-Before running the code, set up a conda environment. The code is written in `python 3.9`. It uses `pytorch 2.3.0` with CUDA and [weaver](https://github.com/hqucms/weaver-core/tree/main):
+Before running the code, set up a conda environment. The code is written in `c++` and `python 3.9`. It uses `pytorch 2.3.0` with CUDA and [weaver](https://github.com/hqucms/weaver-core/tree/main):
 ```
 conda install pytorch==2.3.0 torchvision==0.18.0 torchaudio==2.3.0 pytorch-cuda=11.8 -c pytorch -c nvidia
 pip install 'weaver-core>=0.4'
